@@ -1,0 +1,61 @@
+# Compiled class files & build artifacts
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Database files
+data/
+*.mv.db
+*.trace.db
+
+# Log files
+*.log
+
+# IDE & Editor files
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
+
+# Local customer/order data
+data/
+
+# Build output
+target/
+
+# Older nested copy of the project
+/Food-Ordering-UI-main/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
+
+# Local customer and order data
+data/
+
+# Build output
+target/
+
+# Older nested copy of the project
+/Food-Ordering-UI-main/
