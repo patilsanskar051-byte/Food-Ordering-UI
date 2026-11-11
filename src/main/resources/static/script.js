@@ -2462,11 +2462,12 @@ function showAdminConfirmDialog(title, message, confirmBtnText, isDanger, onConf
 function navigateTo(page) {
     const pageNames = {
         home: "Discover",
-        menu: "Explore menu",
-        orders: "My orders",
-        cart: "My cart",
-        profile: "My profile",
-        admin: "Admin portal"
+        menu: "Our Menu",
+        kitchen: "Kitchen Story",
+        orders: "My Orders",
+        cart: "My Cart",
+        profile: "My Profile",
+        admin: "Admin Portal"
     };
 
     if (page === "cart") {
@@ -2489,18 +2490,31 @@ function navigateTo(page) {
         return;
     }
 
-    document.querySelectorAll(".nav-item").forEach(button => {
+    if (page === "kitchen") {
+        const kitchenSec = document.getElementById("kitchen-pillars");
+        if (kitchenSec) {
+            kitchenSec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
+            button.classList.toggle("active", button.dataset.page === page);
+        });
+        return;
+    }
+
+    document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
         button.classList.toggle("active", button.dataset.page === page);
     });
 
-    document.getElementById("breadcrumb-current").textContent =
-        pageNames[page] || "Discover";
+    const breadcrumb = document.getElementById("breadcrumb-current");
+    if (breadcrumb) {
+        breadcrumb.textContent = pageNames[page] || "Discover";
+    }
 
     if (page === "menu") {
-        document.getElementById("food-section").scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
+        const foodSec = document.getElementById("food-section");
+        if (foodSec) {
+            foodSec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
     } else {
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -2584,25 +2598,137 @@ if (foodSearchClear) {
     });
 }
 
-document.querySelectorAll(".nav-item").forEach(button => {
-    button.addEventListener("click", () => navigateTo(button.dataset.page));
+// Mobile navigation drawer toggle and controls
+const mobileToggleBtn = document.getElementById("mobile-toggle-btn");
+const mobileNavDrawer = document.getElementById("mobile-nav-drawer");
+const mobileNavClose = document.getElementById("mobile-nav-close");
+const mobileNavBackdrop = document.getElementById("mobile-nav-backdrop");
+
+function openMobileNav() {
+    if (mobileNavDrawer) {
+        mobileNavDrawer.classList.add("open");
+        mobileNavDrawer.setAttribute("aria-hidden", "false");
+    }
+    if (mobileNavBackdrop) {
+        mobileNavBackdrop.classList.add("active");
+    }
+    if (mobileToggleBtn) {
+        mobileToggleBtn.setAttribute("aria-expanded", "true");
+    }
+}
+
+function closeMobileNav() {
+    if (mobileNavDrawer) {
+        mobileNavDrawer.classList.remove("open");
+        mobileNavDrawer.setAttribute("aria-hidden", "true");
+    }
+    if (mobileNavBackdrop) {
+        mobileNavBackdrop.classList.remove("active");
+    }
+    if (mobileToggleBtn) {
+        mobileToggleBtn.setAttribute("aria-expanded", "false");
+    }
+}
+
+if (mobileToggleBtn) {
+    mobileToggleBtn.addEventListener("click", () => {
+        const isOpen = mobileNavDrawer && mobileNavDrawer.classList.contains("open");
+        if (isOpen) closeMobileNav();
+        else openMobileNav();
+    });
+}
+
+if (mobileNavClose) {
+    mobileNavClose.addEventListener("click", closeMobileNav);
+}
+
+if (mobileNavBackdrop) {
+    mobileNavBackdrop.addEventListener("click", closeMobileNav);
+}
+
+// Navigation links across desktop topbar, mobile drawer, and legacy sidebar
+document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
+    button.addEventListener("click", () => {
+        if (button.dataset.page) {
+            navigateTo(button.dataset.page);
+            closeMobileNav();
+        }
+    });
 });
 
-document.getElementById("header-cart").addEventListener("click", showCart);
-document.getElementById("offer-explore").addEventListener("click", () => navigateTo("menu"));
-document.getElementById("hero-explore").addEventListener("click", () => navigateTo("menu"));
+// Brand wordmark click
+const brandLogo = document.getElementById("brand-logo");
+if (brandLogo) {
+    brandLogo.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("home");
+    });
+}
 
-document.getElementById("view-all").addEventListener("click", () => {
-    searchInput.value = "";
-    if (sortSelect) sortSelect.value = "default";
-    selectCategory("All");
+// User Profile / Sign in pill button
+const userPillBtn = document.getElementById("user-pill-btn");
+if (userPillBtn) {
+    userPillBtn.addEventListener("click", () => {
+        if (currentUser && currentUser.loggedIn) {
+            showProfile();
+        } else {
+            showAuthScreen();
+        }
+    });
+}
+
+// Auth guest bypass buttons
+const guestBypassBtn = document.getElementById("auth-guest-bypass-btn");
+if (guestBypassBtn) {
+    guestBypassBtn.addEventListener("click", () => {
+        hideAuthScreen();
+        if (foods.length === 0) loadFoods();
+    });
+}
+
+const guestExploreBtn = document.getElementById("auth-guest-explore-btn");
+if (guestExploreBtn) {
+    guestExploreBtn.addEventListener("click", () => {
+        hideAuthScreen();
+        if (foods.length === 0) loadFoods();
+        navigateTo("menu");
+    });
+}
+
+// Footer navigation links
+document.querySelectorAll(".footer-links a[data-page]").forEach(link => {
+    link.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo(link.dataset.page);
+    });
 });
 
-document.getElementById("reset-filters").addEventListener("click", () => {
-    searchInput.value = "";
-    if (sortSelect) sortSelect.value = "default";
-    selectCategory("All");
-});
+const headerCartBtn = document.getElementById("header-cart");
+if (headerCartBtn) headerCartBtn.addEventListener("click", showCart);
+
+const offerExploreBtn = document.getElementById("offer-explore");
+if (offerExploreBtn) offerExploreBtn.addEventListener("click", () => navigateTo("menu"));
+
+const heroExploreBtn = document.getElementById("hero-explore");
+if (heroExploreBtn) heroExploreBtn.addEventListener("click", () => navigateTo("menu"));
+
+const viewAllBtn = document.getElementById("view-all");
+if (viewAllBtn) {
+    viewAllBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        if (sortSelect) sortSelect.value = "default";
+        selectCategory("All");
+    });
+}
+
+const resetFiltersBtn = document.getElementById("reset-filters");
+if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        if (sortSelect) sortSelect.value = "default";
+        selectCategory("All");
+    });
+}
 
 document.addEventListener("keydown", event => {
     if (
@@ -2682,9 +2808,7 @@ let googleClientId = "755498069210-a53fiibrvm5gd8vkvkdjv88re3ae5prj.apps.googleu
 
 function showAuthScreen() {
     const authScreen = document.getElementById("crave-auth-screen");
-    const appShell = document.getElementById("app-shell");
     if (authScreen) authScreen.classList.remove("hidden");
-    if (appShell) appShell.classList.add("hidden");
 }
 
 function hideAuthScreen() {
@@ -2768,8 +2892,10 @@ async function checkSession() {
         console.warn("Session check request failed:", err);
     }
 
-    // User is unauthenticated: display Crave auth landing screen
-    showAuthScreen();
+    // Guest mode: ensure menu dishes load immediately for discovery
+    if (foods.length === 0) {
+        loadFoods();
+    }
     initGoogleAuth();
     return false;
 }
@@ -3080,3 +3206,8 @@ setupAuthTabs();
 
 // Initial Auth Lifecycle Check
 checkSession();
+
+// Eager load menu items for visitors
+if (foods.length === 0) {
+    loadFoods();
+}
