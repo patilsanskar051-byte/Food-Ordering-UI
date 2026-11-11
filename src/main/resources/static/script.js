@@ -100,6 +100,7 @@ function renderFoods() {
         const safeBadge = escapeHtml(food.badge || "RECOMMENDED");
         const safeRating = escapeHtml(food.rating || "4.8");
         const isCustom = food.id > 9;
+        const cartQty = cart.get(food.id) || 0;
 
         return `
         <article class="food-card ${isOutOfStock ? 'out-of-stock' : ''}" data-food-id="${food.id}" style="animation-delay:${Math.min(index * 45, 450)}ms">
@@ -135,11 +136,17 @@ function renderFoods() {
                         <button class="add-button out-of-stock-btn" disabled aria-disabled="true">
                             <span>✕</span> Sold Out
                         </button>
+                    ` : (cartQty > 0 ? `
+                        <div class="card-stepper" aria-label="Quantity of ${safeName} in cart">
+                            <button class="card-stepper-btn" data-card-action="decrease" data-id="${food.id}" aria-label="Decrease quantity">−</button>
+                            <span class="card-stepper-count">${cartQty}</span>
+                            <button class="card-stepper-btn" data-card-action="increase" data-id="${food.id}" aria-label="Increase quantity">+</button>
+                        </div>
                     ` : `
                         <button class="add-button" data-add="${food.id}" aria-label="Add ${safeName} to cart">
                             <span class="btn-icon">+</span> <span class="btn-text">Add</span>
                         </button>
-                    `}
+                    `)}
                 </div>
             </div>
         </article>
@@ -208,6 +215,28 @@ function addToCart(foodId, buttonElem) {
     showToast(`${food.name} added to your cart`);
 }
 
+function changeQuantity(id, delta) {
+    const food = foods.find(item => item.id === id);
+    if (!food) return;
+
+    const count = cart.get(id) || 0;
+    if (delta > 0) {
+        if (food.available === false) {
+            showToast(`${food.name} is currently out of stock.`);
+            return;
+        }
+        cart.set(id, count + 1);
+    } else if (delta < 0) {
+        if (count <= 1) {
+            cart.delete(id);
+            showToast(`${food.name} removed from cart`);
+        } else {
+            cart.set(id, count - 1);
+        }
+    }
+    updateCart();
+}
+
 function updateCart() {
     let quantity = 0;
 
@@ -222,6 +251,47 @@ function updateCart() {
     if (cartBtn) {
         cartBtn.setAttribute("aria-label", `Open cart, ${quantity} items`);
     }
+
+    // Synchronize visible menu card controls with active cart counts
+    document.querySelectorAll(".food-card").forEach(card => {
+        const foodId = Number(card.dataset.foodId);
+        if (!foodId) return;
+        const food = foods.find(f => f.id === foodId);
+        if (!food || food.available === false) return;
+
+        const bottomElem = card.querySelector(".food-card-bottom");
+        if (!bottomElem) return;
+
+        const cartQty = cart.get(foodId) || 0;
+        const existingStepper = bottomElem.querySelector(".card-stepper");
+        const existingAddBtn = bottomElem.querySelector(".add-button:not(.out-of-stock-btn)");
+
+        if (cartQty > 0) {
+            if (existingStepper) {
+                const countElem = existingStepper.querySelector(".card-stepper-count");
+                if (countElem) countElem.textContent = cartQty;
+            } else if (existingAddBtn) {
+                const stepper = document.createElement("div");
+                stepper.className = "card-stepper";
+                stepper.setAttribute("aria-label", `Quantity of ${escapeHtml(food.name)} in cart`);
+                stepper.innerHTML = `
+                    <button class="card-stepper-btn" data-card-action="decrease" data-id="${food.id}" aria-label="Decrease quantity">−</button>
+                    <span class="card-stepper-count">${cartQty}</span>
+                    <button class="card-stepper-btn" data-card-action="increase" data-id="${food.id}" aria-label="Increase quantity">+</button>
+                `;
+                existingAddBtn.replaceWith(stepper);
+            }
+        } else {
+            if (existingStepper) {
+                const addBtn = document.createElement("button");
+                addBtn.className = "add-button";
+                addBtn.setAttribute("data-add", food.id);
+                addBtn.setAttribute("aria-label", `Add ${escapeHtml(food.name)} to cart`);
+                addBtn.innerHTML = `<span class="btn-icon">+</span> <span class="btn-text">Add</span>`;
+                existingStepper.replaceWith(addBtn);
+            }
+        }
+    });
 }
 
 function showToast(message) {
@@ -448,6 +518,37 @@ function showCart() {
                 </div>
             </div>
 
+            <!-- Payment Method Selection -->
+            <div class="cart-payment-selection">
+                <div class="payment-selection-header">
+                    <span style="color:var(--accent);">💳</span>
+                    <span>Payment Method</span>
+                </div>
+                <div class="payment-options-grid">
+                    <label class="payment-option active">
+                        <input type="radio" name="checkout-payment" value="cod" checked>
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">Cash on Delivery</span>
+                            <span class="payment-option-desc">Pay cash or UPI upon delivery</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="checkout-payment" value="upi">
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">UPI / Instant QR</span>
+                            <span class="payment-option-desc">Google Pay, PhonePe, Paytm, BHIM</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="checkout-payment" value="card">
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">Credit or Debit Card</span>
+                            <span class="payment-option-desc">Visa, Mastercard, RuPay</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
             <!-- Order Summary -->
             <div class="cart-summary">
                 <div class="summary-line"><span>Items Subtotal</span><strong>₹${total}</strong></div>
@@ -471,6 +572,15 @@ function showCart() {
 
     document.body.appendChild(overlay);
     document.body.style.overflow = "hidden";
+
+    // Setup payment method option selection toggle
+    overlay.querySelectorAll(".payment-option input[type='radio']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            overlay.querySelectorAll(".payment-option").forEach(opt => opt.classList.remove("active"));
+            const parentOpt = radio.closest(".payment-option");
+            if (parentOpt) parentOpt.classList.add("active");
+        });
+    });
 
     overlay.addEventListener("click", event => {
         if (event.target === overlay || event.target.closest("[data-close-cart]")) {
@@ -601,9 +711,7 @@ function showCart() {
  * Feature 1: Order Confirmation Dialog with Download Receipt button
  */
 function showOrderConfirmation(order) {
-    // Trigger confetti upon verified order creation
-    launchConfetti();
-
+    // Polished, luxury order confirmation dialog
     const overlay = document.createElement("div");
     overlay.className = "cart-overlay";
 
@@ -729,6 +837,9 @@ async function showReceiptPreview(orderId) {
                     <a id="download-receipt-link" href="${API_BASE}/api/orders/${orderId}/receipt" download="receipt-order-${orderId}.txt" class="checkout-button" style="flex:1; text-decoration:none; justify-content:center; gap:6px;">
                         <span>📥 Download .TXT</span>
                     </a>
+                    <button id="print-receipt-btn" class="add-button" style="padding:12px 16px; border-radius:10px; border:1px solid var(--border); background:var(--surface-elevated); color:var(--text); justify-content:center;" aria-label="Print official receipt">
+                        <span>🖨 Print</span>
+                    </button>
                     <button id="copy-receipt-btn" class="add-button" style="padding:12px 18px; border-radius:10px; border:1px solid var(--border); background:var(--surface-elevated); color:var(--text); justify-content:center;">
                         <span>📋 Copy Text</span>
                     </button>
@@ -748,6 +859,11 @@ async function showReceiptPreview(orderId) {
     overlay.addEventListener("click", event => {
         if (event.target === overlay || event.target.closest("[data-close-drawer]")) {
             closeDialog();
+            return;
+        }
+
+        if (event.target.closest("#print-receipt-btn")) {
+            window.print();
             return;
         }
 
@@ -2346,11 +2462,12 @@ function showAdminConfirmDialog(title, message, confirmBtnText, isDanger, onConf
 function navigateTo(page) {
     const pageNames = {
         home: "Discover",
-        menu: "Explore menu",
-        orders: "My orders",
-        cart: "My cart",
-        profile: "My profile",
-        admin: "Admin portal"
+        menu: "Our Menu",
+        kitchen: "Kitchen Story",
+        orders: "My Orders",
+        cart: "My Cart",
+        profile: "My Profile",
+        admin: "Admin Portal"
     };
 
     if (page === "cart") {
@@ -2373,18 +2490,31 @@ function navigateTo(page) {
         return;
     }
 
-    document.querySelectorAll(".nav-item").forEach(button => {
+    if (page === "kitchen") {
+        const kitchenSec = document.getElementById("kitchen-pillars");
+        if (kitchenSec) {
+            kitchenSec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
+            button.classList.toggle("active", button.dataset.page === page);
+        });
+        return;
+    }
+
+    document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
         button.classList.toggle("active", button.dataset.page === page);
     });
 
-    document.getElementById("breadcrumb-current").textContent =
-        pageNames[page] || "Discover";
+    const breadcrumb = document.getElementById("breadcrumb-current");
+    if (breadcrumb) {
+        breadcrumb.textContent = pageNames[page] || "Discover";
+    }
 
     if (page === "menu") {
-        document.getElementById("food-section").scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
+        const foodSec = document.getElementById("food-section");
+        if (foodSec) {
+            foodSec.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
     } else {
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -2396,8 +2526,21 @@ document.getElementById("category-list").addEventListener("click", event => {
 });
 
 foodGrid.addEventListener("click", event => {
-    const button = event.target.closest("[data-add]");
-    if (button) addToCart(Number(button.dataset.add), button);
+    const addBtn = event.target.closest("[data-add]");
+    if (addBtn) {
+        addToCart(Number(addBtn.dataset.add), addBtn);
+        return;
+    }
+    const stepperBtn = event.target.closest("[data-card-action]");
+    if (stepperBtn) {
+        const id = Number(stepperBtn.dataset.id);
+        const action = stepperBtn.dataset.cardAction;
+        if (action === "increase") {
+            changeQuantity(id, 1);
+        } else if (action === "decrease") {
+            changeQuantity(id, -1);
+        }
+    }
 });
 
 searchInput.addEventListener("input", renderFoods);
@@ -2455,25 +2598,137 @@ if (foodSearchClear) {
     });
 }
 
-document.querySelectorAll(".nav-item").forEach(button => {
-    button.addEventListener("click", () => navigateTo(button.dataset.page));
+// Mobile navigation drawer toggle and controls
+const mobileToggleBtn = document.getElementById("mobile-toggle-btn");
+const mobileNavDrawer = document.getElementById("mobile-nav-drawer");
+const mobileNavClose = document.getElementById("mobile-nav-close");
+const mobileNavBackdrop = document.getElementById("mobile-nav-backdrop");
+
+function openMobileNav() {
+    if (mobileNavDrawer) {
+        mobileNavDrawer.classList.add("open");
+        mobileNavDrawer.setAttribute("aria-hidden", "false");
+    }
+    if (mobileNavBackdrop) {
+        mobileNavBackdrop.classList.add("active");
+    }
+    if (mobileToggleBtn) {
+        mobileToggleBtn.setAttribute("aria-expanded", "true");
+    }
+}
+
+function closeMobileNav() {
+    if (mobileNavDrawer) {
+        mobileNavDrawer.classList.remove("open");
+        mobileNavDrawer.setAttribute("aria-hidden", "true");
+    }
+    if (mobileNavBackdrop) {
+        mobileNavBackdrop.classList.remove("active");
+    }
+    if (mobileToggleBtn) {
+        mobileToggleBtn.setAttribute("aria-expanded", "false");
+    }
+}
+
+if (mobileToggleBtn) {
+    mobileToggleBtn.addEventListener("click", () => {
+        const isOpen = mobileNavDrawer && mobileNavDrawer.classList.contains("open");
+        if (isOpen) closeMobileNav();
+        else openMobileNav();
+    });
+}
+
+if (mobileNavClose) {
+    mobileNavClose.addEventListener("click", closeMobileNav);
+}
+
+if (mobileNavBackdrop) {
+    mobileNavBackdrop.addEventListener("click", closeMobileNav);
+}
+
+// Navigation links across desktop topbar, mobile drawer, and legacy sidebar
+document.querySelectorAll(".nav-link, .mobile-nav-link, .nav-item").forEach(button => {
+    button.addEventListener("click", () => {
+        if (button.dataset.page) {
+            navigateTo(button.dataset.page);
+            closeMobileNav();
+        }
+    });
 });
 
-document.getElementById("header-cart").addEventListener("click", showCart);
-document.getElementById("offer-explore").addEventListener("click", () => navigateTo("menu"));
-document.getElementById("hero-explore").addEventListener("click", () => navigateTo("menu"));
+// Brand wordmark click
+const brandLogo = document.getElementById("brand-logo");
+if (brandLogo) {
+    brandLogo.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo("home");
+    });
+}
 
-document.getElementById("view-all").addEventListener("click", () => {
-    searchInput.value = "";
-    if (sortSelect) sortSelect.value = "default";
-    selectCategory("All");
+// User Profile / Sign in pill button
+const userPillBtn = document.getElementById("user-pill-btn");
+if (userPillBtn) {
+    userPillBtn.addEventListener("click", () => {
+        if (currentUser && currentUser.loggedIn) {
+            showProfile();
+        } else {
+            showAuthScreen();
+        }
+    });
+}
+
+// Auth guest bypass buttons
+const guestBypassBtn = document.getElementById("auth-guest-bypass-btn");
+if (guestBypassBtn) {
+    guestBypassBtn.addEventListener("click", () => {
+        hideAuthScreen();
+        if (foods.length === 0) loadFoods();
+    });
+}
+
+const guestExploreBtn = document.getElementById("auth-guest-explore-btn");
+if (guestExploreBtn) {
+    guestExploreBtn.addEventListener("click", () => {
+        hideAuthScreen();
+        if (foods.length === 0) loadFoods();
+        navigateTo("menu");
+    });
+}
+
+// Footer navigation links
+document.querySelectorAll(".footer-links a[data-page]").forEach(link => {
+    link.addEventListener("click", (e) => {
+        e.preventDefault();
+        navigateTo(link.dataset.page);
+    });
 });
 
-document.getElementById("reset-filters").addEventListener("click", () => {
-    searchInput.value = "";
-    if (sortSelect) sortSelect.value = "default";
-    selectCategory("All");
-});
+const headerCartBtn = document.getElementById("header-cart");
+if (headerCartBtn) headerCartBtn.addEventListener("click", showCart);
+
+const offerExploreBtn = document.getElementById("offer-explore");
+if (offerExploreBtn) offerExploreBtn.addEventListener("click", () => navigateTo("menu"));
+
+const heroExploreBtn = document.getElementById("hero-explore");
+if (heroExploreBtn) heroExploreBtn.addEventListener("click", () => navigateTo("menu"));
+
+const viewAllBtn = document.getElementById("view-all");
+if (viewAllBtn) {
+    viewAllBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        if (sortSelect) sortSelect.value = "default";
+        selectCategory("All");
+    });
+}
+
+const resetFiltersBtn = document.getElementById("reset-filters");
+if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener("click", () => {
+        searchInput.value = "";
+        if (sortSelect) sortSelect.value = "default";
+        selectCategory("All");
+    });
+}
 
 document.addEventListener("keydown", event => {
     if (
@@ -2553,9 +2808,7 @@ let googleClientId = "755498069210-a53fiibrvm5gd8vkvkdjv88re3ae5prj.apps.googleu
 
 function showAuthScreen() {
     const authScreen = document.getElementById("crave-auth-screen");
-    const appShell = document.getElementById("app-shell");
     if (authScreen) authScreen.classList.remove("hidden");
-    if (appShell) appShell.classList.add("hidden");
 }
 
 function hideAuthScreen() {
@@ -2639,8 +2892,10 @@ async function checkSession() {
         console.warn("Session check request failed:", err);
     }
 
-    // User is unauthenticated: display Crave auth landing screen
-    showAuthScreen();
+    // Guest mode: ensure menu dishes load immediately for discovery
+    if (foods.length === 0) {
+        loadFoods();
+    }
     initGoogleAuth();
     return false;
 }
@@ -2951,3 +3206,8 @@ setupAuthTabs();
 
 // Initial Auth Lifecycle Check
 checkSession();
+
+// Eager load menu items for visitors
+if (foods.length === 0) {
+    loadFoods();
+}
