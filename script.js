@@ -100,6 +100,7 @@ function renderFoods() {
         const safeBadge = escapeHtml(food.badge || "RECOMMENDED");
         const safeRating = escapeHtml(food.rating || "4.8");
         const isCustom = food.id > 9;
+        const cartQty = cart.get(food.id) || 0;
 
         return `
         <article class="food-card ${isOutOfStock ? 'out-of-stock' : ''}" data-food-id="${food.id}" style="animation-delay:${Math.min(index * 45, 450)}ms">
@@ -135,11 +136,17 @@ function renderFoods() {
                         <button class="add-button out-of-stock-btn" disabled aria-disabled="true">
                             <span>✕</span> Sold Out
                         </button>
+                    ` : (cartQty > 0 ? `
+                        <div class="card-stepper" aria-label="Quantity of ${safeName} in cart">
+                            <button class="card-stepper-btn" data-card-action="decrease" data-id="${food.id}" aria-label="Decrease quantity">−</button>
+                            <span class="card-stepper-count">${cartQty}</span>
+                            <button class="card-stepper-btn" data-card-action="increase" data-id="${food.id}" aria-label="Increase quantity">+</button>
+                        </div>
                     ` : `
                         <button class="add-button" data-add="${food.id}" aria-label="Add ${safeName} to cart">
                             <span class="btn-icon">+</span> <span class="btn-text">Add</span>
                         </button>
-                    `}
+                    `)}
                 </div>
             </div>
         </article>
@@ -208,6 +215,28 @@ function addToCart(foodId, buttonElem) {
     showToast(`${food.name} added to your cart`);
 }
 
+function changeQuantity(id, delta) {
+    const food = foods.find(item => item.id === id);
+    if (!food) return;
+
+    const count = cart.get(id) || 0;
+    if (delta > 0) {
+        if (food.available === false) {
+            showToast(`${food.name} is currently out of stock.`);
+            return;
+        }
+        cart.set(id, count + 1);
+    } else if (delta < 0) {
+        if (count <= 1) {
+            cart.delete(id);
+            showToast(`${food.name} removed from cart`);
+        } else {
+            cart.set(id, count - 1);
+        }
+    }
+    updateCart();
+}
+
 function updateCart() {
     let quantity = 0;
 
@@ -222,6 +251,47 @@ function updateCart() {
     if (cartBtn) {
         cartBtn.setAttribute("aria-label", `Open cart, ${quantity} items`);
     }
+
+    // Synchronize visible menu card controls with active cart counts
+    document.querySelectorAll(".food-card").forEach(card => {
+        const foodId = Number(card.dataset.foodId);
+        if (!foodId) return;
+        const food = foods.find(f => f.id === foodId);
+        if (!food || food.available === false) return;
+
+        const bottomElem = card.querySelector(".food-card-bottom");
+        if (!bottomElem) return;
+
+        const cartQty = cart.get(foodId) || 0;
+        const existingStepper = bottomElem.querySelector(".card-stepper");
+        const existingAddBtn = bottomElem.querySelector(".add-button:not(.out-of-stock-btn)");
+
+        if (cartQty > 0) {
+            if (existingStepper) {
+                const countElem = existingStepper.querySelector(".card-stepper-count");
+                if (countElem) countElem.textContent = cartQty;
+            } else if (existingAddBtn) {
+                const stepper = document.createElement("div");
+                stepper.className = "card-stepper";
+                stepper.setAttribute("aria-label", `Quantity of ${escapeHtml(food.name)} in cart`);
+                stepper.innerHTML = `
+                    <button class="card-stepper-btn" data-card-action="decrease" data-id="${food.id}" aria-label="Decrease quantity">−</button>
+                    <span class="card-stepper-count">${cartQty}</span>
+                    <button class="card-stepper-btn" data-card-action="increase" data-id="${food.id}" aria-label="Increase quantity">+</button>
+                `;
+                existingAddBtn.replaceWith(stepper);
+            }
+        } else {
+            if (existingStepper) {
+                const addBtn = document.createElement("button");
+                addBtn.className = "add-button";
+                addBtn.setAttribute("data-add", food.id);
+                addBtn.setAttribute("aria-label", `Add ${escapeHtml(food.name)} to cart`);
+                addBtn.innerHTML = `<span class="btn-icon">+</span> <span class="btn-text">Add</span>`;
+                existingStepper.replaceWith(addBtn);
+            }
+        }
+    });
 }
 
 function showToast(message) {
@@ -448,6 +518,37 @@ function showCart() {
                 </div>
             </div>
 
+            <!-- Payment Method Selection -->
+            <div class="cart-payment-selection">
+                <div class="payment-selection-header">
+                    <span style="color:var(--accent);">💳</span>
+                    <span>Payment Method</span>
+                </div>
+                <div class="payment-options-grid">
+                    <label class="payment-option active">
+                        <input type="radio" name="checkout-payment" value="cod" checked>
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">Cash on Delivery</span>
+                            <span class="payment-option-desc">Pay cash or UPI upon delivery</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="checkout-payment" value="upi">
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">UPI / Instant QR</span>
+                            <span class="payment-option-desc">Google Pay, PhonePe, Paytm, BHIM</span>
+                        </div>
+                    </label>
+                    <label class="payment-option">
+                        <input type="radio" name="checkout-payment" value="card">
+                        <div class="payment-option-details">
+                            <span class="payment-option-name">Credit or Debit Card</span>
+                            <span class="payment-option-desc">Visa, Mastercard, RuPay</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
             <!-- Order Summary -->
             <div class="cart-summary">
                 <div class="summary-line"><span>Items Subtotal</span><strong>₹${total}</strong></div>
@@ -471,6 +572,15 @@ function showCart() {
 
     document.body.appendChild(overlay);
     document.body.style.overflow = "hidden";
+
+    // Setup payment method option selection toggle
+    overlay.querySelectorAll(".payment-option input[type='radio']").forEach(radio => {
+        radio.addEventListener("change", () => {
+            overlay.querySelectorAll(".payment-option").forEach(opt => opt.classList.remove("active"));
+            const parentOpt = radio.closest(".payment-option");
+            if (parentOpt) parentOpt.classList.add("active");
+        });
+    });
 
     overlay.addEventListener("click", event => {
         if (event.target === overlay || event.target.closest("[data-close-cart]")) {
@@ -601,9 +711,7 @@ function showCart() {
  * Feature 1: Order Confirmation Dialog with Download Receipt button
  */
 function showOrderConfirmation(order) {
-    // Trigger confetti upon verified order creation
-    launchConfetti();
-
+    // Polished, luxury order confirmation dialog
     const overlay = document.createElement("div");
     overlay.className = "cart-overlay";
 
@@ -729,6 +837,9 @@ async function showReceiptPreview(orderId) {
                     <a id="download-receipt-link" href="${API_BASE}/api/orders/${orderId}/receipt" download="receipt-order-${orderId}.txt" class="checkout-button" style="flex:1; text-decoration:none; justify-content:center; gap:6px;">
                         <span>📥 Download .TXT</span>
                     </a>
+                    <button id="print-receipt-btn" class="add-button" style="padding:12px 16px; border-radius:10px; border:1px solid var(--border); background:var(--surface-elevated); color:var(--text); justify-content:center;" aria-label="Print official receipt">
+                        <span>🖨 Print</span>
+                    </button>
                     <button id="copy-receipt-btn" class="add-button" style="padding:12px 18px; border-radius:10px; border:1px solid var(--border); background:var(--surface-elevated); color:var(--text); justify-content:center;">
                         <span>📋 Copy Text</span>
                     </button>
@@ -748,6 +859,11 @@ async function showReceiptPreview(orderId) {
     overlay.addEventListener("click", event => {
         if (event.target === overlay || event.target.closest("[data-close-drawer]")) {
             closeDialog();
+            return;
+        }
+
+        if (event.target.closest("#print-receipt-btn")) {
+            window.print();
             return;
         }
 
@@ -2396,8 +2512,21 @@ document.getElementById("category-list").addEventListener("click", event => {
 });
 
 foodGrid.addEventListener("click", event => {
-    const button = event.target.closest("[data-add]");
-    if (button) addToCart(Number(button.dataset.add), button);
+    const addBtn = event.target.closest("[data-add]");
+    if (addBtn) {
+        addToCart(Number(addBtn.dataset.add), addBtn);
+        return;
+    }
+    const stepperBtn = event.target.closest("[data-card-action]");
+    if (stepperBtn) {
+        const id = Number(stepperBtn.dataset.id);
+        const action = stepperBtn.dataset.cardAction;
+        if (action === "increase") {
+            changeQuantity(id, 1);
+        } else if (action === "decrease") {
+            changeQuantity(id, -1);
+        }
+    }
 });
 
 searchInput.addEventListener("input", renderFoods);
